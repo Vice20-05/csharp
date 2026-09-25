@@ -1,0 +1,10 @@
+# Build folders
+bin/
+obj/
+
+# CSV data file (never commit user data - GDPR)
+*.csv
+
+# IDE files
+.vs/
+*.user
