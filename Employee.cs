@@ -1,11 +1,13 @@
 using System;
 
+// A base worker. Manager inherits from this and adds one field.
 class Employee
 {
     public string Name { get; set; }
     public double Salary { get; set; }
     public int Id { get; set; }
 
+    // Same constructor as in Java.
     public Employee(string name, double salary, int id)
     {
         Name = name;
@@ -13,6 +15,7 @@ class Employee
         Id = id;
     }
 
+    // Prints the employee on one line.
     public void ShowInfo()
     {
         Console.WriteLine();
