@@ -2,8 +2,8 @@
 bin/
 obj/
 
-# CSV data file (never commit user data - GDPR)
-*.csv
+# User data file (never commit user data - GDPR)
+users.txt
 
 # IDE files
 .vs/

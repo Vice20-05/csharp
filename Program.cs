@@ -6,7 +6,7 @@ class Program
     {
         try
         {
-            CsvStore.Init();
+            TxtStore.Init();
 
             // Your original lab code, kept as is:
             Employee e1 = new Employee("Anna Kenzie", 2000, 5341);
@@ -50,7 +50,7 @@ class Program
                     string u = Console.ReadLine();
                     Console.Write("Password: ");
                     string p = Console.ReadLine();
-                    CsvStore.Register(u, p);
+                    TxtStore.Register(u, p);
                     break;
 
                 case "2":
@@ -59,7 +59,7 @@ class Program
                     Console.Write("Password: ");
                     string pass = Console.ReadLine();
 
-                    bool ok = CsvStore.Login(name, pass);
+                    bool ok = TxtStore.Login(name, pass);
                     if (ok)
                         Console.WriteLine("Welcome, " + name + "!");
                     else
@@ -71,13 +71,13 @@ class Program
                     string uname = Console.ReadLine();
                     Console.Write("New password: ");
                     string newpass = Console.ReadLine();
-                    CsvStore.UpdateUser(uname, newpass);
+                    TxtStore.UpdateUser(uname, newpass);
                     break;
 
                 case "4":
                     Console.Write("Username: ");
                     string delUser = Console.ReadLine();
-                    CsvStore.DeleteUser(delUser);
+                    TxtStore.DeleteUser(delUser);
                     break;
 
                 case "5":

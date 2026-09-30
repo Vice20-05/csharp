@@ -3,23 +3,26 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 
-// Stores users in a simple CSV file: users.csv
-// Each line looks like: username,hash,timestamp
-class CsvStore
+// Stores users in a plain text file: users.txt
+// Each line looks like: id|username|hash|timestamp
+class TxtStore
 {
-    const string FilePath = "users.csv";
+    const string FilePath = "users.txt";
+    const string Header = "id|username|passwordhash|createdat";
+    const char Separator = '|';
+    const int Columns = 4;
 
     // Make sure the file exists so we can read it safely.
     public static void Init()
     {
         if (!File.Exists(FilePath))
         {
-            File.WriteAllText(FilePath, "username,passwordhash,createdat" + Environment.NewLine);
+            File.WriteAllText(FilePath, Header + Environment.NewLine);
         }
     }
 
     // --- THIS is the "one thread" part ---
-    // Reads every line of the CSV on ONE background thread, waits for it,
+    // Reads every line of the file on ONE background thread, waits for it,
     // then returns the rows as a list.
     public static List<string[]> ReadAll()
     {
@@ -34,27 +37,50 @@ class CsvStore
         reader.Start();   // start the thread
         reader.Join();    // wait for it to finish (one thread does the reading)
 
-        for (int i = 1; i < lines.Length; i++)   // skip the header row
+        for (int i = 0; i < lines.Length; i++)
         {
             if (lines[i].Trim().Length == 0)
                 continue;
 
-            string[] parts = lines[i].Split(',');
-            if (parts.Length == 3)
-                rows.Add(parts);
+            // Skip anything that is not a full row, so a missing or repeated
+            // header can never silently drop a real user.
+            string[] parts = lines[i].Split(Separator);
+            if (parts.Length != Columns)
+                continue;
+            if (parts[0].Trim() == "id")   // the header row
+                continue;
+
+            rows.Add(parts);
         }
 
         return rows;
     }
 
+    // Stands in for SQLite's AUTOINCREMENT: the next id is the highest one
+    // already used, plus one. Starts at 1 when the file has no users yet.
+    static int NextId(List<string[]> rows)
+    {
+        int highest = 0;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            int id;
+            if (int.TryParse(rows[i][0], out id) && id > highest)
+                highest = id;
+        }
+        return highest + 1;
+    }
+
     // Register works already: hashes the password and stores a UTC timestamp.
     public static void Register(string username, string password)
     {
+        List<string[]> rows = ReadAll();
+
         string hash = PasswordHasher.Encode(password, 3);
         long timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(); // Unix seconds (UTC)
+        string id = NextId(rows).ToString();
 
-        File.AppendAllText(FilePath,
-            username + "," + hash + "," + timestamp + Environment.NewLine);
+        rows.Add(new string[] { id, username, hash, timestamp.ToString() });
+        WriteAll(rows);
 
         Console.WriteLine("User registered: " + username + " (hash: " + hash + ")");
     }
@@ -66,9 +92,9 @@ class CsvStore
 
         for (int i = 0; i < rows.Count; i++)
         {
-            if (rows[i][0] == username)
+            if (rows[i][1] == username)
             {
-                return PasswordHasher.Verify(password, rows[i][1]);
+                return PasswordHasher.Verify(password, rows[i][2]);
             }
         }
 
@@ -82,7 +108,7 @@ class CsvStore
 
         for (int i = 0; i < rows.Count; i++)
         {
-            if (rows[i][0] == username)
+            if (rows[i][1] == username)
             {
                 rows.RemoveAt(i);
                 WriteAll(rows);
@@ -101,9 +127,9 @@ class CsvStore
 
         for (int i = 0; i < rows.Count; i++)
         {
-            if (rows[i][0] == username)
+            if (rows[i][1] == username)
             {
-                rows[i][1] = PasswordHasher.Encode(newPassword, 3);
+                rows[i][2] = PasswordHasher.Encode(newPassword, 3);
                 WriteAll(rows);
                 Console.WriteLine("Password updated for: " + username);
                 return;
@@ -113,14 +139,15 @@ class CsvStore
         Console.WriteLine("User not found: " + username);
     }
 
-    // Helper for your TODOs: writes the header + every row back to the file.
+    // Helper: writes the header + every row back to the file.
     public static void WriteAll(List<string[]> rows)
     {
         List<string> lines = new List<string>();
-        lines.Add("username,passwordhash,createdat");
+        lines.Add(Header);
         for (int i = 0; i < rows.Count; i++)
         {
-            lines.Add(rows[i][0] + "," + rows[i][1] + "," + rows[i][2]);
+            lines.Add(rows[i][0] + Separator + rows[i][1] + Separator
+                    + rows[i][2] + Separator + rows[i][3]);
         }
         File.WriteAllLines(FilePath, lines.ToArray());
     }
