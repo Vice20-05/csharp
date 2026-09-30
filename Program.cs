@@ -43,7 +43,8 @@ class Program
             Console.WriteLine("2. Login");
             Console.WriteLine("3. Update user (GDPR)");
             Console.WriteLine("4. Delete user (GDPR)");
-            Console.WriteLine("5. Exit");
+            Console.WriteLine("5. Show users");
+            Console.WriteLine("6. Exit");
             Console.Write("Choice: ");
 
             string choice = Console.ReadLine();
@@ -84,7 +85,11 @@ class Program
                     TxtStore.DeleteUser(delUser);
                     break;
 
-                case "5":     // Exit: stop the loop
+                case "5":     // Show users: list everyone in the file
+                    TxtStore.ShowUsers();
+                    break;
+
+                case "6":     // Exit: stop the loop
                     running = false;
                     break;
 

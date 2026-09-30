@@ -225,6 +225,35 @@ class TxtStore
         Console.WriteLine("User not found: " + username);
     }
 
+    // Lists every stored user. The hash is not shown, only the id, the
+    // username and when the account was created.
+    public static void ShowUsers()
+    {
+        List<string[]> rows = ReadAll();
+
+        if (rows.Count == 0)
+        {
+            Console.WriteLine("No users stored yet.");
+            return;
+        }
+
+        Console.WriteLine("Id\tUsername\tCreated");
+
+        for (int i = 0; i < rows.Count; i++)
+        {
+            long seconds = 0;
+            long.TryParse(rows[i][3], out seconds);   // stays 0 if not a number
+
+            // turn the Unix seconds back into a readable date
+            DateTime when = DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime;
+
+            Console.WriteLine(rows[i][0] + "\t" + rows[i][1] + "\t"
+                + when.ToString("yyyy-MM-dd HH:mm:ss") + " UTC");
+        }
+
+        Console.WriteLine(rows.Count + " user(s).");
+    }
+
     // Helper: writes the header + the id counter + every row back to the file.
     public static void WriteAll(List<string[]> rows)
     {
