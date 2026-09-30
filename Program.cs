@@ -7,6 +7,7 @@ class Program
     {
         try
         {
+            Console.Clear();
             TxtStore.Init();   // creates users.txt (with its header) if missing
 
             // Your original lab code, kept as is:
@@ -51,6 +52,7 @@ class Program
             switch (choice)   // every case calls one TxtStore method
             {
                 case "1":     // Register: hash + save the new user
+                    Console.Clear();
                     Console.Write("Username: ");
                     string u = Console.ReadLine();
                     Console.Write("Password: ");
@@ -72,6 +74,8 @@ class Program
                     break;
 
                 case "3":     // Update: GDPR right to rectification
+                    
+                    Console.Clear();
                     Console.Write("Username: ");
                     string uname = Console.ReadLine();
                     Console.Write("New password: ");
@@ -80,12 +84,14 @@ class Program
                     break;
 
                 case "4":     // Delete: GDPR right to erasure
+                    Console.Clear();
                     Console.Write("Username: ");
                     string delUser = Console.ReadLine();
                     TxtStore.DeleteUser(delUser);
                     break;
 
                 case "5":     // Show users: list everyone in the file
+                    Console.Clear();
                     TxtStore.ShowUsers();
                     break;
 
