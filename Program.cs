@@ -2,13 +2,17 @@ using System;
 
 class Program
 {
+    // The one store the whole program uses. It is declared as the interface,
+    // so the menu never depends on the TxtStore class itself.
+    static IUserStore store = new TxtStore();
+
     // The whole program runs inside try / catch / finally.
     static void Main(string[] args)
     {
         try
         {
             Console.Clear();
-            TxtStore.Init();   // creates users.txt (with its header) if missing
+            store.Init();   // creates users.txt (with its header) if missing
 
             // Your original lab code, kept as is:
             Employee e1 = new Employee("Anna Kenzie", 2000, 5341);
@@ -33,7 +37,7 @@ class Program
         }
     }
 
-    // The menu loop: keeps repeating until the user picks 5 (Exit).
+    // The menu loop: keeps repeating until the user picks 8 (Exit).
     static void Menu()
     {
         bool running = true;   // becomes false on Exit, which ends the loop
@@ -45,11 +49,14 @@ class Program
             Console.WriteLine("3. Update user (GDPR)");
             Console.WriteLine("4. Delete user (GDPR)");
             Console.WriteLine("5. Show users");
-            Console.WriteLine("6. Exit");
+            Console.WriteLine("6. Make director");
+            Console.WriteLine("7. Logout");
+            Console.WriteLine("8. Exit");
+            ShowStatus();
             Console.Write("Choice: ");
 
             string choice = Console.ReadLine();
-            switch (choice)   // every case calls one TxtStore method
+            switch (choice)   // every case calls one store method
             {
                 case "1":     // Register: hash + save the new user
                     Console.Clear();
@@ -57,7 +64,7 @@ class Program
                     string u = Console.ReadLine();
                     Console.Write("Password: ");
                     string p = Console.ReadLine();
-                    TxtStore.Register(u, p);
+                    store.Register(u, p);
                     break;
 
                 case "2":     // Login: true only if the password matches
@@ -66,36 +73,55 @@ class Program
                     Console.Write("Password: ");
                     string pass = Console.ReadLine();
 
-                    bool ok = TxtStore.Login(name, pass);
-                    if (ok)
-                        Console.WriteLine("Welcome, " + name + "!");
-                    else
+                    bool ok = store.Login(name, pass);
+                    if (!ok)
+                    {
                         Console.WriteLine("Invalid credentials");
+                        break;
+                    }
+
+                    // The director gets a special welcome.
+                    if (store.IsDirector(name))
+                        Console.WriteLine("Welcome, " + name + "! (director)");
+                    else
+                        Console.WriteLine("Welcome, " + name + "!");
                     break;
 
                 case "3":     // Update: GDPR right to rectification
-                    
                     Console.Clear();
                     Console.Write("Username: ");
                     string uname = Console.ReadLine();
                     Console.Write("New password: ");
                     string newpass = Console.ReadLine();
-                    TxtStore.UpdateUser(uname, newpass);
+                    store.UpdateUser(uname, newpass);
                     break;
 
                 case "4":     // Delete: GDPR right to erasure
                     Console.Clear();
                     Console.Write("Username: ");
                     string delUser = Console.ReadLine();
-                    TxtStore.DeleteUser(delUser);
+                    store.DeleteUser(delUser);
                     break;
 
-                case "5":     // Show users: list everyone in the file
+                case "5":     // Show users: your row, or everyone if director
                     Console.Clear();
-                    TxtStore.ShowUsers();
+                    store.ShowUsers();
                     break;
 
-                case "6":     // Exit: stop the loop
+                case "6":     // Make director: only ever one
+                    Console.Clear();
+                    Console.Write("Username of the new director: ");
+                    string newDir = Console.ReadLine();
+                    store.MakeDirector(newDir);
+                    break;
+
+                case "7":     // Logout: forget who is logged in
+                    Console.Clear();
+                    store.Logout();
+                    Console.WriteLine("Logged out.");
+                    break;
+
+                case "8":     // Exit: stop the loop
                     running = false;
                     break;
 
@@ -104,5 +130,20 @@ class Program
                     break;
             }
         }
+    }
+
+    // One small line above the menu showing who is logged in.
+    static void ShowStatus()
+    {
+        if (store.LoggedInUser == null)
+        {
+            Console.WriteLine("Not logged in.");
+            return;
+        }
+
+        if (store.IsDirector(store.LoggedInUser))
+            Console.WriteLine("Logged in as " + store.LoggedInUser + " (director)");
+        else
+            Console.WriteLine("Logged in as " + store.LoggedInUser);
     }
 }

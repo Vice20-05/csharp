@@ -4,30 +4,38 @@ using System.IO;
 using System.Threading;
 
 // Stores users in a plain text file: users.txt
-// Each user line looks like: id|username|hash|timestamp
-// The second line is a counter: lastid|<n>
-class TxtStore
+//
+// The file looks like this:
+//   id|username|passwordhash|createdat   <- header
+//   lastid|3                              <- highest id ever used
+//   director|anna                         <- the one director (optional)
+//   1|anna|vhfuhw456|1759248000           <- one user
+//   2|bob|mtvgmt012|1759248100
+class TxtStore : IUserStore
 {
     const string FilePath = "users.txt";
     const string Header = "id|username|passwordhash|createdat";
     const string LastIdLabel = "lastid";
+    const string DirectorLabel = "director";
     const char Separator = '|';
     const int Columns = 4;
 
-    // Make sure the file exists so we can read it safely.
-    public static void Init()
+    // Who is logged in right now, or null when nobody is. Used by the menu
+    // to decide which actions are allowed.
+    public string? LoggedInUser { get; private set; } //the ? mark it allows null value
+
+    // Forgets the logged-in user. Menu option 7.
+    public void Logout()
     {
-        if (!File.Exists(FilePath))
-        {
-            File.WriteAllLines(FilePath, new string[] { Header, LastIdLabel + Separator + 0 });
-        }
+        LoggedInUser = null;
     }
 
-    // --- THIS is the "one thread" part ---
+    // --- THE ONE THREAD PART ---
     // Reads every line of the file on ONE background thread and waits for it.
+    // Every method that touches the file goes through here.
     static string[] ReadLines()
     {
-        string[] lines = null;
+        string[]? lines = null;
 
         Thread reader = new Thread(() =>
         {
@@ -37,14 +45,15 @@ class TxtStore
         reader.Start();   // start the thread
         reader.Join();    // wait for it to finish (one thread does the reading)
 
-        return lines;
+        // The ! says "trust me, the thread always filled this in" - true
+        // because Join() above has finished by the time we get here.
+        return lines!;
     }
 
-    // Turns the file into a list of rows (one row per user).
-    public static List<string[]> ReadAll()
+    // Turns the lines into rows, one row per user.
+    static List<string[]> ParseRows(string[] lines)
     {
         List<string[]> rows = new List<string[]>();
-        string[] lines = ReadLines();
 
         for (int i = 0; i < lines.Length; i++)
         {
@@ -53,7 +62,7 @@ class TxtStore
 
             // Skip anything that is not a full row, so a missing or repeated
             // header can never silently drop a real user. This also skips the
-            // lastid line, because it only has 2 fields.
+            // lastid and director lines, because they only have 2 fields.
             string[] parts = lines[i].Split(Separator);
             if (parts.Length != Columns)
                 continue;
@@ -66,24 +75,49 @@ class TxtStore
         return rows;
     }
 
-    // The highest id we ever handed out, remembered in the lastid line.
-    // Returns 0 if the file has no such line yet.
-    static int ReadLastId()
+    // Reads the small "label|value" lines: lastid and director.
+    static string? ReadLabel(string label)
     {
         string[] lines = ReadLines();
 
         for (int i = 0; i < lines.Length; i++)
         {
-            if (!lines[i].StartsWith(LastIdLabel + Separator))
+            if (!lines[i].StartsWith(label + Separator))
                 continue;
 
             string[] parts = lines[i].Split(Separator);
-            int value;
-            if (parts.Length == 2 && int.TryParse(parts[1], out value))
-                return value;
+            if (parts.Length == 2)
+                return parts[1];
         }
 
+        return null;   // the line is not in the file
+    }
+
+    // The highest id we ever handed out. Returns 0 if there is no lastid line.
+    static int ReadLastId()
+    {
+        string? text = ReadLabel(LastIdLabel);
+
+        int value;
+        if (text != null && int.TryParse(text, out value))
+            return value;
+
         return 0;
+    }
+
+    // Every user row in the file.
+    public List<string[]> ReadAll()
+    {
+        return ParseRows(ReadLines());
+    }
+
+    // Creates the file with its header and an empty id counter.
+    public void Init()
+    {
+        if (File.Exists(FilePath))
+            return;
+
+        File.WriteAllLines(FilePath, new string[] { Header, LastIdLabel + Separator + 0 });
     }
 
     // Stands in for SQLite's AUTOINCREMENT: the next id is one above the
@@ -127,8 +161,8 @@ class TxtStore
         return false;
     }
 
-    // Register works already: hashes the password and stores a UTC timestamp.
-    public static void Register(string username, string password)
+    // Adds a new user. This is the method behind menu option 1.
+    public void Register(string username, string password)
     {
         if (!IsValidUsername(username))
         {
@@ -160,8 +194,8 @@ class TxtStore
         Console.WriteLine("User registered: " + username + " (hash: " + hash + ")");
     }
 
-    // Checks username + password.
-    public static bool Login(string username, string password)
+    // Checks username + password. Menu option 2.
+    public bool Login(string username, string password)
     {
         if (username == null || password == null)
             return false;
@@ -173,36 +207,95 @@ class TxtStore
         {
             if (rows[i][1] == username)
             {
-                return PasswordHasher.Verify(password, rows[i][2]);
+                if (!PasswordHasher.Verify(password, rows[i][2]))
+                    return false;
+
+                LoggedInUser = username;   // remember who is logged in
+                return true;
             }
         }
 
         return false; // username not found
     }
 
-    // GDPR "right to erasure": removes the user's row.
-    public static void DeleteUser(string username)
+    // A director sees every user. A normal user only sees their own row.
+    public void ShowUsers()
     {
-        List<string[]> rows = ReadAll();
-
-        for (int i = 0; i < rows.Count; i++)
+        if (LoggedInUser == null)
         {
-            if (rows[i][1] == username)
+            Console.WriteLine("Please log in first (option 2).");
+            return;
+        }
+
+        bool director = IsDirector(LoggedInUser);
+        List<string[]> rows = ReadAll();
+        int shown = 0;   // how many rows we actually printed
+
+        if (director)
+        {
+            // The director gets the hashes too, which nobody else sees.
+            Console.WriteLine("Id\tUsername\tHash\tCreated");
+            for (int i = 0; i < rows.Count; i++)
             {
-                rows.RemoveAt(i);   // drop that row
-                WriteAll(rows);     // then save what is left
-                Console.WriteLine("User deleted: " + username);
-                return;             // stop, so we delete only one row
+                Console.WriteLine(rows[i][0] + "\t" + rows[i][1] + "\t" + rows[i][2]
+                    + "\t" + FormatDate(rows[i][3]));
+                shown++;
+            }
+        }
+        else
+        {
+            Console.WriteLine("Id\tUsername\tCreated");
+            for (int i = 0; i < rows.Count; i++)
+            {
+                if (rows[i][1] != LoggedInUser)
+                    continue;   // a normal user only sees their own row
+
+                Console.WriteLine(rows[i][0] + "\t" + rows[i][1] + "\t"
+                    + FormatDate(rows[i][3]));
+                shown++;
             }
         }
 
-        Console.WriteLine("User not found: " + username);
+        Console.WriteLine(shown + " row(s) shown out of " + rows.Count + " stored.");
     }
 
-    // GDPR "right to rectification": changes the user's password hash.
-    // The id and the createdat stay the same, so nothing else changes.
-    public static void UpdateUser(string username, string newPassword)
+    // Turns a stored Unix timestamp into a readable date.
+    static string FormatDate(string storedSeconds)
     {
+        long seconds = 0;
+        long.TryParse(storedSeconds, out seconds);   // stays 0 if not a number
+
+        DateTime when = DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime;
+        return when.ToString("yyyy-MM-dd HH:mm:ss") + " UTC";
+    }
+
+    // Who is allowed to touch an account?
+    // A director may touch anybody, a normal user only their own account.
+    bool CanManage(string username)
+    {
+        if (LoggedInUser == null)
+        {
+            Console.WriteLine("Please log in first (option 2).");
+            return false;
+        }
+
+        if (IsDirector(LoggedInUser))
+            return true;   // the director is the super user
+
+        if (LoggedInUser == username)
+            return true;   // your own account
+
+        Console.WriteLine("You can only change your own account.");
+        return false;
+    }
+
+    // GDPR right to rectification: changes the user's password hash.
+    // Menu option 3. The id and the createdat stay the same.
+    public void UpdateUser(string username, string newPassword)
+    {
+        if (!CanManage(username))
+            return;
+
         if (newPassword == null || newPassword.Length == 0)
         {
             Console.WriteLine("Invalid password: it cannot be empty");
@@ -225,37 +318,110 @@ class TxtStore
         Console.WriteLine("User not found: " + username);
     }
 
-    // Lists every stored user. The hash is not shown, only the id, the
-    // username and when the account was created.
-    public static void ShowUsers()
+    // GDPR right to erasure: removes the user's row. Menu option 4.
+    public void DeleteUser(string username)
     {
-        List<string[]> rows = ReadAll();
+        if (!CanManage(username))
+            return;
 
-        if (rows.Count == 0)
+        // The director is the one account that can never be removed, otherwise
+        // somebody else could appoint a new director.
+        if (IsDirector(username))
         {
-            Console.WriteLine("No users stored yet.");
+            Console.WriteLine("The director account cannot be deleted.");
             return;
         }
 
-        Console.WriteLine("Id\tUsername\tCreated");
+        List<string[]> rows = ReadAll();
 
         for (int i = 0; i < rows.Count; i++)
         {
-            long seconds = 0;
-            long.TryParse(rows[i][3], out seconds);   // stays 0 if not a number
+            if (rows[i][1] == username)
+            {
+                rows.RemoveAt(i);   // drop that row
+                WriteAll(rows);     // then save what is left
+                Console.WriteLine("User deleted: " + username);
 
-            // turn the Unix seconds back into a readable date
-            DateTime when = DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime;
-
-            Console.WriteLine(rows[i][0] + "\t" + rows[i][1] + "\t"
-                + when.ToString("yyyy-MM-dd HH:mm:ss") + " UTC");
+                if (username == LoggedInUser)
+                    LoggedInUser = null;   // you deleted yourself
+                return;             // stop, so we delete only one row
+            }
         }
 
-        Console.WriteLine(rows.Count + " user(s).");
+        Console.WriteLine("User not found: " + username);
     }
 
-    // Helper: writes the header + the id counter + every row back to the file.
-    public static void WriteAll(List<string[]> rows)
+    // true once a director has been appointed.
+    public bool HasDirector()
+    {
+        return ReadLabel(DirectorLabel) != null;
+    }
+
+    // true when this username is the director.
+    public bool IsDirector(string username)
+    {
+        if (username == null)
+            return false;
+
+        return username == ReadLabel(DirectorLabel);
+    }
+
+    // Appoints a director. Only ever one, so a second attempt is refused.
+    // Menu option 6.
+    public bool MakeDirector(string username)
+    {
+        if (!IsValidUsername(username))
+        {
+            Console.WriteLine("Invalid username: it cannot be empty and cannot contain '|'");
+            return false;
+        }
+
+        // Rule 1: only one director, ever.
+        if (HasDirector())
+        {
+            Console.WriteLine("A director already exists: " + ReadLabel(DirectorLabel));
+            return false;
+        }
+
+        // Rule 2: the director has to be a real account, so they can log in.
+        List<string[]> rows = ReadAll();
+        if (!UsernameExists(rows, username))
+        {
+            Console.WriteLine("No such user: " + username + " (register it first)");
+            return false;
+        }
+
+        WriteLabel(DirectorLabel, username);   // saves and adds the director line
+
+        Console.WriteLine(username + " is now the director.");
+        return true;
+    }
+
+    // Adds or replaces one of the small "label|value" lines at the top of the
+    // file, keeping it above the user rows.
+    void WriteLabel(string label, string value)
+    {
+        string[] existing = ReadLines();   // same one-thread read as everywhere else
+        List<string> lines = new List<string>();
+
+        foreach (string line in existing)
+        {
+            if (line.Trim().Length == 0)
+                continue;
+            if (line.StartsWith(label + Separator))
+                continue;   // drop the old value, we write a new one
+
+            lines.Add(line);
+        }
+
+        // The header is always the first line, so the new line goes on line 2.
+        lines.Insert(1, label + Separator + value);
+
+        File.WriteAllLines(FilePath, lines.ToArray());
+    }
+
+    // Writes the header + the id counter + the director + every row.
+    public void WriteAll(List<string[]> rows)
     {
         // The counter may never go backwards. If every user was deleted the
         // rows are empty, so without this the ids would start over at 1.
@@ -270,6 +436,10 @@ class TxtStore
         List<string> lines = new List<string>();
         lines.Add(Header);
         lines.Add(LastIdLabel + Separator + last);
+
+        string? director = ReadLabel(DirectorLabel);
+        if (director != null)
+            lines.Add(DirectorLabel + Separator + director);
 
         // Back to the file, one user per line, fields joined by '|'.
         for (int i = 0; i < rows.Count; i++)
