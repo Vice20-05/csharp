@@ -1,4 +1,5 @@
 using System;
+using System.Net.Mail;
 
 class Program
 {
@@ -37,6 +38,23 @@ class Program
         }
     }
 
+    static string ReadRequiredInput(string prompt)
+    {
+        string? value;
+
+        do
+        {
+            Console.Write(prompt);
+            value = Console.ReadLine();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                Console.WriteLine("Input cannot be empty.");
+            }
+        } while (string.IsNullOrWhiteSpace(value));
+
+        return value;
+    }
+
     // The menu loop: keeps repeating until the user picks 8 (Exit).
     static void Menu()
     {
@@ -51,27 +69,24 @@ class Program
             Console.WriteLine("5. Show users");
             Console.WriteLine("6. Make director");
             Console.WriteLine("7. Logout");
-            Console.WriteLine("8. Exit");
-            ShowStatus();
-            Console.Write("Choice: ");
+            Console.WriteLine("8. Sort using Linq manager, employee");
 
-            string choice = Console.ReadLine();
+            Console.WriteLine("9. Exit");
+            ShowStatus();
+
+            string choice = ReadRequiredInput("Choice: ");
             switch (choice)   // every case calls one store method
             {
                 case "1":     // Register: hash + save the new user
                     Console.Clear();
-                    Console.Write("Username: ");
-                    string u = Console.ReadLine();
-                    Console.Write("Password: ");
-                    string p = Console.ReadLine();
+                    string u = ReadRequiredInput("Username: ");
+                    string p = ReadRequiredInput("Password: ");
                     store.Register(u, p);
                     break;
 
                 case "2":     // Login: true only if the password matches
-                    Console.Write("Username: ");
-                    string name = Console.ReadLine();
-                    Console.Write("Password: ");
-                    string pass = Console.ReadLine();
+                    string name = ReadRequiredInput("Username: ");
+                    string pass = ReadRequiredInput("Password: ");
 
                     bool ok = store.Login(name, pass);
                     if (!ok)
@@ -89,17 +104,14 @@ class Program
 
                 case "3":     // Update: GDPR right to rectification
                     Console.Clear();
-                    Console.Write("Username: ");
-                    string uname = Console.ReadLine();
-                    Console.Write("New password: ");
-                    string newpass = Console.ReadLine();
+                    string uname = ReadRequiredInput("Username: ");
+                    string newpass = ReadRequiredInput("New password: ");
                     store.UpdateUser(uname, newpass);
                     break;
 
                 case "4":     // Delete: GDPR right to erasure
                     Console.Clear();
-                    Console.Write("Username: ");
-                    string delUser = Console.ReadLine();
+                    string delUser = ReadRequiredInput("Username: ");
                     store.DeleteUser(delUser);
                     break;
 
@@ -110,8 +122,7 @@ class Program
 
                 case "6":     // Make director: only ever one
                     Console.Clear();
-                    Console.Write("Username of the new director: ");
-                    string newDir = Console.ReadLine();
+                    string newDir = ReadRequiredInput("Username of the new director: ");
                     store.MakeDirector(newDir);
                     break;
 
@@ -121,7 +132,21 @@ class Program
                     Console.WriteLine("Logged out.");
                     break;
 
-                case "8":     // Exit: stop the loop
+                case "8":
+                    Console.Clear();
+                    Console.WriteLine("Employee Name:\t");
+                    string empName = ReadRequiredInput("");
+
+                    Console.WriteLine("\nManager name: ");
+                    string managerName = ReadRequiredInput("");
+
+                    Employee employee = new Employee(empName, 2000, 5341);
+                    Employee manager = new Manager(managerName, 5000, 5214, 5);
+
+                    LINQ.ShowSorting(employee, manager);
+                    break;
+
+                case "9":     // Exit: stop the loop
                     running = false;
                     break;
 
