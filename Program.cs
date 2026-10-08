@@ -67,11 +67,16 @@ class Program
             Console.WriteLine("3. Update user (GDPR)");
             Console.WriteLine("4. Delete user (GDPR)");
             Console.WriteLine("5. Show users");
-            Console.WriteLine("6. Make director");
+            if (!store.HasDirector()
+                || (store.LoggedInUser != null && store.IsDirector(store.LoggedInUser)))
+            {
+                Console.WriteLine("6. Make director");
+            }
             Console.WriteLine("7. Logout");
             Console.WriteLine("8. Sort using Linq manager, employee");
-
             Console.WriteLine("9. Exit");
+            if (store.LoggedInUser != null && store.IsDirector(store.LoggedInUser))
+                Console.WriteLine("10. Make manager");
             ShowStatus();
 
             string choice = ReadRequiredInput("Choice: ");
@@ -99,12 +104,17 @@ class Program
                     // The director gets a special welcome.
                     if (store.IsDirector(name))
                         Console.WriteLine("Welcome, " + name + "! (director)");
+                    else if (store.IsManager(name))
+                        Console.WriteLine("Welcome, " + name + "! (manager)");
                     else
                         Console.WriteLine("Welcome, " + name + "!");
                     break;
 
                 case "3":     // Update: GDPR right to rectification
                     Console.Clear();
+                    List<string> updateUsers = store.GetManageableUsernames();
+                    if (updateUsers.Count == 0)
+                        break;
                     string uname = ReadRequiredInput("Username: ");
                     string newpass = ReadRequiredInput("New password: ");
                     store.UpdateUser(uname, newpass);
@@ -112,6 +122,9 @@ class Program
 
                 case "4":     // Delete: GDPR right to erasure
                     Console.Clear();
+                    List<string> deleteUsers = store.GetManageableUsernames();
+                    if (deleteUsers.Count == 0)
+                        break;
                     string delUser = ReadRequiredInput("Username: ");
                     store.DeleteUser(delUser);
                     break;
@@ -151,6 +164,12 @@ class Program
                     running = false;
                     break;
 
+                case "10":
+                    Console.Clear();
+                    string newManager = ReadRequiredInput("Username of the new manager: ");
+                    store.MakeManager(newManager);
+                    break;
+
                 default:       // anything else
                     Console.WriteLine("Unknown choice.");
                     break;
@@ -166,6 +185,8 @@ class Program
 
         if (store.IsDirector(store.LoggedInUser))
             Console.WriteLine("Logged in as " + store.LoggedInUser + " (director)");
+        else if (store.IsManager(store.LoggedInUser))
+            Console.WriteLine("Logged in as " + store.LoggedInUser + " (manager)");
         else
             Console.WriteLine("Logged in as " + store.LoggedInUser);
     }

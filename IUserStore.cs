@@ -22,8 +22,11 @@ interface IUserStore
     void DeleteUser(string username);
 
     // Every user row in the file, one string[] per user:
-    // { id, username, passwordhash, createdat }
+    // { id, username, passwordhash, createdat, role }
     List<string[]> ReadAll();
+
+    // Shows the usernames the current account is allowed to update or delete.
+    List<string> GetManageableUsernames();
 
     // Prints the users. A director sees everyone plus the hashes,
     // a normal logged-in user only sees their own row.
@@ -35,6 +38,12 @@ interface IUserStore
     // Appoints a username as the one and only director.
     // Returns false if a director already exists.
     bool MakeDirector(string username);
+
+    // Promotes an existing account to manager.
+    bool MakeManager(string username);
+
+    // true when this username is a manager.
+    bool IsManager(string username);
 
     // true when a director has been appointed.
     bool HasDirector();
