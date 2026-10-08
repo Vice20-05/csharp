@@ -89,6 +89,7 @@ class Program
                     string pass = ReadRequiredInput("Password: ");
 
                     bool ok = store.Login(name, pass);
+                    Console.Clear();
                     if (!ok)
                     {
                         Console.WriteLine("Invalid credentials");
@@ -161,10 +162,7 @@ class Program
     static void ShowStatus()
     {
         if (store.LoggedInUser == null)
-        {
-            Console.WriteLine("Not logged in.");
             return;
-        }
 
         if (store.IsDirector(store.LoggedInUser))
             Console.WriteLine("Logged in as " + store.LoggedInUser + " (director)");

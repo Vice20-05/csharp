@@ -13,7 +13,7 @@ using System.Threading;
 //   2|bob|mtvgmt012|1759248100
 class TxtStore : IUserStore
 {
-    const string FilePath = "users.txt";
+    static readonly string FilePath = ResolveFilePath();
     const string Header = "id|username|passwordhash|createdat";
     const string LastIdLabel = "lastid";
     const string DirectorLabel = "director";
@@ -24,6 +24,21 @@ class TxtStore : IUserStore
     // so changing this one line to new SomethingElse() would change how every
     // password is encoded, without touching anything else.
     readonly IEncoder encoder = new CaesarEncoder(3);
+
+    static string ResolveFilePath()
+    {
+        DirectoryInfo? directory = new DirectoryInfo(AppContext.BaseDirectory);
+
+        while (directory != null)
+        {
+            if (Directory.GetFiles(directory.FullName, "*.csproj").Length > 0)
+                return Path.Combine(directory.FullName, "users.txt");
+
+            directory = directory.Parent;
+        }
+
+        return Path.Combine(AppContext.BaseDirectory, "users.txt");
+    }
 
     // Who is logged in right now, or null when nobody is. Used by the menu
     // to decide which actions are allowed.
