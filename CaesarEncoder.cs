@@ -1,10 +1,23 @@
 using System;
 
-class PasswordHasher
+// Shifts every letter and digit by a fixed amount (a Caesar cipher).
+// It implements IEncoder, so TxtStore does not need to know which encoder it
+// is using. The shift is given to the constructor instead of being hardcoded,
+// so the same class can encode with 3, 5, 13 and so on.
+class CaesarEncoder : IEncoder
 {
+    // How far to shift each letter. 3 in this lab.
+    int shift;
+
+    // Makes the encoder. Pass the shift you want to use.
+    public CaesarEncoder(int shift)
+    {
+        this.shift = shift;
+    }
+
     // Shift every letter by 'shift' places (Caesar cipher).
     // secret123 with shift 3 becomes vhfuhw456.
-    public static string Encode(string text, int shift)
+    public string Encode(string text)
     {
         char[] result = text.ToCharArray();
         for (int i = 0; i < result.Length; i++)
@@ -24,9 +37,9 @@ class PasswordHasher
     }
 
     // Re-encodes the typed password with the same shift and compares it to
-    // the stored hash. true if Encode(password, 3) equals the stored hash.
-    public static bool Verify(string password, string storedHash)
+    // the stored value.
+    public bool Verify(string text, string stored)
     {
-        return Encode(password, 3) == storedHash;
+        return Encode(text) == stored;
     }
 }

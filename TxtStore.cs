@@ -20,6 +20,11 @@ class TxtStore : IUserStore
     const char Separator = '|';
     const int Columns = 4;
 
+    // The encoder used for passwords. It is typed as the interface IEncoder,
+    // so changing this one line to new SomethingElse() would change how every
+    // password is encoded, without touching anything else.
+    readonly IEncoder encoder = new CaesarEncoder(3);
+
     // Who is logged in right now, or null when nobody is. Used by the menu
     // to decide which actions are allowed.
     public string? LoggedInUser { get; private set; } //the ? mark it allows null value
@@ -35,7 +40,7 @@ class TxtStore : IUserStore
     // Every method that touches the file goes through here.
     static string[] ReadLines()
     {
-        string[]? lines = null;
+        string[]? lines = null; // the thread will fill this in , allows null value
 
         Thread reader = new Thread(() =>
         {
@@ -184,7 +189,7 @@ class TxtStore : IUserStore
             return;
         }
 
-        string hash = PasswordHasher.Encode(password, 3);
+        string hash = encoder.Encode(password);
         long timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(); // Unix seconds (UTC)
         string id = NextId(rows).ToString();
 
@@ -207,7 +212,7 @@ class TxtStore : IUserStore
         {
             if (rows[i][1] == username)
             {
-                if (!PasswordHasher.Verify(password, rows[i][2]))
+                if (!encoder.Verify(password, rows[i][2]))
                     return false;
 
                 LoggedInUser = username;   // remember who is logged in
@@ -308,7 +313,7 @@ class TxtStore : IUserStore
         {
             if (rows[i][1] == username)
             {
-                rows[i][2] = PasswordHasher.Encode(newPassword, 3);   // only the hash
+                rows[i][2] = encoder.Encode(newPassword);   // only the hash
                 WriteAll(rows);
                 Console.WriteLine("Password updated for: " + username);
                 return;
