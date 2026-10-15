@@ -1,7 +1,7 @@
 using System;
 
 // A base worker. Manager inherits from this and adds one field.
-class Employee
+public class Employee
 {
     public string Name { get; set; }
     public double Salary { get; set; }

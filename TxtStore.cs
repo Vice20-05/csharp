@@ -6,19 +6,43 @@ using System.Threading;
 // Stores users in a plain text file: users.txt
 //
 // The file looks like this:
-//   id|username|passwordhash|createdat   <- header
+//   id|username|passwordhash|createdat|role   <- header
 //   lastid|3                              <- highest id ever used
 //   director|anna                         <- the one director (optional)
-//   1|anna|vhfuhw456|1759248000           <- one user
-//   2|bob|mtvgmt012|1759248100
+//   1|anna|vhfuhw456|1759248000|user      <- one user
+//   2|bob|mtvgmt012|1759248100|manager
 class TxtStore : IUserStore
 {
-    const string FilePath = "users.txt";
-    const string Header = "id|username|passwordhash|createdat";
+    static readonly string FilePath = ResolveFilePath();
+    const string Header = "id|username|passwordhash|createdat|role";
     const string LastIdLabel = "lastid";
     const string DirectorLabel = "director";
     const char Separator = '|';
-    const int Columns = 4;
+    const int MinimumColumns = 4;
+    const int MaximumColumns = 5;
+    const int RoleColumn = 4;
+    const string UserRole = "user";
+    const string ManagerRole = "manager";
+
+    // The encoder used for passwords. It is typed as the interface IEncoder,
+    // so changing this one line to new SomethingElse() would change how every
+    // password is encoded, without touching anything else.
+    readonly IEncoder encoder = new CaesarEncoder(3);
+
+    static string ResolveFilePath()
+    {
+        DirectoryInfo? directory = new DirectoryInfo(AppContext.BaseDirectory);
+
+        while (directory != null)
+        {
+            if (Directory.GetFiles(directory.FullName, "*.csproj").Length > 0)
+                return Path.Combine(directory.FullName, "users.txt");
+
+            directory = directory.Parent;
+        }
+
+        return Path.Combine(AppContext.BaseDirectory, "users.txt");
+    }
 
     // Who is logged in right now, or null when nobody is. Used by the menu
     // to decide which actions are allowed.
@@ -35,15 +59,28 @@ class TxtStore : IUserStore
     // Every method that touches the file goes through here.
     static string[] ReadLines()
     {
-        string[]? lines = null;
+        string[]? lines = null; // the thread will fill this in , allows null value
+        Exception? error = null; // set if the thread could not read the file
 
         Thread reader = new Thread(() =>
         {
-            lines = File.ReadAllLines(FilePath);
+            // An exception on a background thread would kill the whole app
+            // (Main's catch cannot see it), so keep it and rethrow it below.
+            try
+            {
+                lines = File.ReadAllLines(FilePath);
+            }
+            catch (Exception ex)
+            {
+                error = ex;
+            }
         });
 
         reader.Start();   // start the thread
         reader.Join();    // wait for it to finish (one thread does the reading)
+
+        if (error != null)
+            throw new IOException("Could not read " + FilePath + ": " + error.Message, error);
 
         // The ! says "trust me, the thread always filled this in" - true
         // because Join() above has finished by the time we get here.
@@ -64,10 +101,15 @@ class TxtStore : IUserStore
             // header can never silently drop a real user. This also skips the
             // lastid and director lines, because they only have 2 fields.
             string[] parts = lines[i].Split(Separator);
-            if (parts.Length != Columns)
+            if (parts.Length < MinimumColumns || parts.Length > MaximumColumns)
                 continue;
             if (parts[0].Trim() == "id")   // the header row
                 continue;
+
+            if (parts.Length == MinimumColumns)
+                Array.Resize(ref parts, MaximumColumns);
+            if (string.IsNullOrWhiteSpace(parts[RoleColumn]))
+                parts[RoleColumn] = UserRole;
 
             rows.Add(parts);
         }
@@ -184,11 +226,11 @@ class TxtStore : IUserStore
             return;
         }
 
-        string hash = PasswordHasher.Encode(password, 3);
+        string hash = encoder.Encode(password);
         long timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds(); // Unix seconds (UTC)
         string id = NextId(rows).ToString();
 
-        rows.Add(new string[] { id, username, hash, timestamp.ToString() });
+        rows.Add(new string[] { id, username, hash, timestamp.ToString(), UserRole });
         WriteAll(rows);   // rewrites the whole file, counter included
 
         Console.WriteLine("User registered: " + username + " (hash: " + hash + ")");
@@ -207,7 +249,7 @@ class TxtStore : IUserStore
         {
             if (rows[i][1] == username)
             {
-                if (!PasswordHasher.Verify(password, rows[i][2]))
+                if (!encoder.Verify(password, rows[i][2]))
                     return false;
 
                 LoggedInUser = username;   // remember who is logged in
@@ -234,29 +276,74 @@ class TxtStore : IUserStore
         if (director)
         {
             // The director gets the hashes too, which nobody else sees.
-            Console.WriteLine("Id\tUsername\tHash\tCreated");
+            Console.WriteLine("Id\tUsername\tRole\tHash\tCreated");
             for (int i = 0; i < rows.Count; i++)
             {
-                Console.WriteLine(rows[i][0] + "\t" + rows[i][1] + "\t" + rows[i][2]
+                Console.WriteLine(rows[i][0] + "\t" + rows[i][1] + "\t"
+                    + GetRole(rows[i][1], rows[i][RoleColumn]) + "\t" + rows[i][2]
                     + "\t" + FormatDate(rows[i][3]));
                 shown++;
             }
         }
         else
         {
-            Console.WriteLine("Id\tUsername\tCreated");
+            Console.WriteLine("Id\tUsername\tRole\tCreated");
             for (int i = 0; i < rows.Count; i++)
             {
                 if (rows[i][1] != LoggedInUser)
                     continue;   // a normal user only sees their own row
 
                 Console.WriteLine(rows[i][0] + "\t" + rows[i][1] + "\t"
+                    + GetRole(rows[i][1], rows[i][RoleColumn]) + "\t"
                     + FormatDate(rows[i][3]));
                 shown++;
             }
         }
 
         Console.WriteLine(shown + " row(s) shown out of " + rows.Count + " stored.");
+    }
+
+    public List<string> GetManageableUsernames()
+    {
+        List<string> usernames = new List<string>();
+        if (LoggedInUser == null)
+        {
+            Console.WriteLine("Please log in first (option 2).");
+            return usernames;
+        }
+
+        bool director = IsDirector(LoggedInUser);
+        bool manager = IsManager(LoggedInUser);
+        List<string[]> rows = ReadAll();
+
+        Console.WriteLine("Username\t|\tRole");
+        for (int i = 0; i < rows.Count; i++)
+        {
+            string username = rows[i][1];
+            if (IsDirector(username) && !director)
+                continue;
+
+            // Everyone may manage their own account.
+            if (director || username == LoggedInUser
+                || (manager && rows[i][RoleColumn] == UserRole))
+            {
+                usernames.Add(username);
+                Console.WriteLine(username + "\t|\t"
+                    + GetRole(username, rows[i][RoleColumn]));
+            }
+        }
+
+        if (usernames.Count == 0)
+            Console.WriteLine("No users are available for you to manage.");
+
+        return usernames;
+    }
+
+    string GetRole(string username, string storedRole)
+    {
+        if (IsDirector(username))
+            return "Director";
+        return storedRole == ManagerRole ? "Manager" : "User";
     }
 
     // Turns a stored Unix timestamp into a readable date.
@@ -279,8 +366,27 @@ class TxtStore : IUserStore
             return false;
         }
 
-        if (IsDirector(LoggedInUser))
+        bool director = IsDirector(LoggedInUser);
+        bool manager = IsManager(LoggedInUser);
+
+        if (IsDirector(username) && !director)
+        {
+            Console.WriteLine("You cannot manage the director account.");
+            return false;
+        }
+
+        // A manager can still change their own password.
+        if (manager && IsManager(username) && username != LoggedInUser)
+        {
+            Console.WriteLine("Managers cannot manage manager accounts.");
+            return false;
+        }
+
+        if (director)
             return true;   // the director is the super user
+
+        if (manager && IsOrdinaryUser(username))
+            return true;
 
         if (LoggedInUser == username)
             return true;   // your own account
@@ -308,7 +414,7 @@ class TxtStore : IUserStore
         {
             if (rows[i][1] == username)
             {
-                rows[i][2] = PasswordHasher.Encode(newPassword, 3);   // only the hash
+                rows[i][2] = encoder.Encode(newPassword);   // only the hash
                 WriteAll(rows);
                 Console.WriteLine("Password updated for: " + username);
                 return;
@@ -316,6 +422,17 @@ class TxtStore : IUserStore
         }
 
         Console.WriteLine("User not found: " + username);
+    }
+
+    bool IsOrdinaryUser(string username)
+    {
+        List<string[]> rows = ReadAll();
+        for (int i = 0; i < rows.Count; i++)
+        {
+            if (rows[i][1] == username)
+                return rows[i][RoleColumn] == UserRole && !IsDirector(username);
+        }
+        return false;
     }
 
     // GDPR right to erasure: removes the user's row. Menu option 4.
@@ -366,10 +483,36 @@ class TxtStore : IUserStore
         return username == ReadLabel(DirectorLabel);
     }
 
+    public bool IsManager(string username)
+    {
+        if (username == null)
+            return false;
+
+        List<string[]> rows = ReadAll();
+        for (int i = 0; i < rows.Count; i++)
+        {
+            if (rows[i][1] == username)
+                return rows[i][RoleColumn] == ManagerRole;
+        }
+        return false;
+    }
+
     // Appoints a director. Only ever one, so a second attempt is refused.
     // Menu option 6.
     public bool MakeDirector(string username)
     {
+        if (LoggedInUser == null)
+        {
+            Console.WriteLine("Please log in first (option 2).");
+            return false;
+        }
+
+        if (HasDirector() && !IsDirector(LoggedInUser))
+        {
+            Console.WriteLine("Only the director can appoint a director.");
+            return false;
+        }
+
         if (!IsValidUsername(username))
         {
             Console.WriteLine("Invalid username: it cannot be empty and cannot contain '|'");
@@ -395,6 +538,48 @@ class TxtStore : IUserStore
 
         Console.WriteLine(username + " is now the director.");
         return true;
+    }
+
+    public bool MakeManager(string username)
+    {
+        if (LoggedInUser == null || !IsDirector(LoggedInUser))
+        {
+            Console.WriteLine("Only the director can appoint a manager.");
+            return false;
+        }
+
+        if (!IsValidUsername(username))
+        {
+            Console.WriteLine("Invalid username: it cannot be empty and cannot contain '|'");
+            return false;
+        }
+
+        if (IsDirector(username))
+        {
+            Console.WriteLine("The director cannot also be a manager.");
+            return false;
+        }
+
+        List<string[]> rows = ReadAll();
+        for (int i = 0; i < rows.Count; i++)
+        {
+            if (rows[i][1] != username)
+                continue;
+
+            if (rows[i][RoleColumn] == ManagerRole)
+            {
+                Console.WriteLine(username + " is already a manager.");
+                return false;
+            }
+
+            rows[i][RoleColumn] = ManagerRole;
+            WriteAll(rows);
+            Console.WriteLine(username + " is now a manager.");
+            return true;
+        }
+
+        Console.WriteLine("No such user: " + username + " (register it first)");
+        return false;
     }
 
     // Adds or replaces one of the small "label|value" lines at the top of the
@@ -445,7 +630,7 @@ class TxtStore : IUserStore
         for (int i = 0; i < rows.Count; i++)
         {
             lines.Add(rows[i][0] + Separator + rows[i][1] + Separator
-                    + rows[i][2] + Separator + rows[i][3]);
+                    + rows[i][2] + Separator + rows[i][3] + Separator + rows[i][RoleColumn]);
         }
 
         File.WriteAllLines(FilePath, lines.ToArray());
