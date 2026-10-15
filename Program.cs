@@ -1,5 +1,4 @@
 using System;
-using System.Net.Mail;
 
 class Program
 {
@@ -46,6 +45,12 @@ class Program
         {
             Console.Write(prompt);
             value = Console.ReadLine();
+
+            // null means the input was closed (Ctrl+D / end of a piped file).
+            // Asking again would loop forever, so stop the program instead.
+            if (value == null)
+                throw new EndOfStreamException("No more input.");
+
             if (string.IsNullOrWhiteSpace(value))
             {
                 Console.WriteLine("Input cannot be empty.");
@@ -55,7 +60,13 @@ class Program
         return value;
     }
 
-    // The menu loop: keeps repeating until the user picks 8 (Exit).
+    // Usernames are trimmed, so "bob " and "bob" are the same account.
+    static string ReadUsername(string prompt)
+    {
+        return ReadRequiredInput(prompt).Trim();
+    }
+
+    // The menu loop: keeps repeating until the user picks 9 (Exit).
     static void Menu()
     {
         bool running = true;   // becomes false on Exit, which ends the loop
@@ -67,11 +78,10 @@ class Program
             Console.WriteLine("3. Update user (GDPR)");
             Console.WriteLine("4. Delete user (GDPR)");
             Console.WriteLine("5. Show users");
-            if (!store.HasDirector()
-                || (store.LoggedInUser != null && store.IsDirector(store.LoggedInUser)))
-            {
+            // There is only ever one director, so this is only offered
+            // until the first one has been appointed.
+            if (!store.HasDirector())
                 Console.WriteLine("6. Make director");
-            }
             Console.WriteLine("7. Logout");
             Console.WriteLine("8. Sort using Linq manager, employee");
             Console.WriteLine("9. Exit");
@@ -84,13 +94,13 @@ class Program
             {
                 case "1":     // Register: hash + save the new user
                     Console.Clear();
-                    string u = ReadRequiredInput("Username: ");
+                    string u = ReadUsername("Username: ");
                     string p = ReadRequiredInput("Password: ");
                     store.Register(u, p);
                     break;
 
                 case "2":     // Login: true only if the password matches
-                    string name = ReadRequiredInput("Username: ");
+                    string name = ReadUsername("Username: ");
                     string pass = ReadRequiredInput("Password: ");
 
                     bool ok = store.Login(name, pass);
@@ -115,7 +125,7 @@ class Program
                     List<string> updateUsers = store.GetManageableUsernames();
                     if (updateUsers.Count == 0)
                         break;
-                    string uname = ReadRequiredInput("Username: ");
+                    string uname = ReadUsername("Username: ");
                     string newpass = ReadRequiredInput("New password: ");
                     store.UpdateUser(uname, newpass);
                     break;
@@ -125,7 +135,7 @@ class Program
                     List<string> deleteUsers = store.GetManageableUsernames();
                     if (deleteUsers.Count == 0)
                         break;
-                    string delUser = ReadRequiredInput("Username: ");
+                    string delUser = ReadUsername("Username: ");
                     store.DeleteUser(delUser);
                     break;
 
@@ -136,7 +146,7 @@ class Program
 
                 case "6":     // Make director: only ever one
                     Console.Clear();
-                    string newDir = ReadRequiredInput("Username of the new director: ");
+                    string newDir = ReadUsername("Username of the new director: ");
                     store.MakeDirector(newDir);
                     break;
 
@@ -148,11 +158,8 @@ class Program
 
                 case "8":
                     Console.Clear();
-                    Console.WriteLine("Employee Name:\t");
-                    string empName = ReadRequiredInput("");
-
-                    Console.WriteLine("\nManager name: ");
-                    string managerName = ReadRequiredInput("");
+                    string empName = ReadRequiredInput("Employee name: ");
+                    string managerName = ReadRequiredInput("Manager name: ");
 
                     Employee employee = new Employee(empName, 2000, 5341);
                     Employee manager = new Manager(managerName, 5000, 5214, 5);
@@ -166,7 +173,7 @@ class Program
 
                 case "10":
                     Console.Clear();
-                    string newManager = ReadRequiredInput("Username of the new manager: ");
+                    string newManager = ReadUsername("Username of the new manager: ");
                     store.MakeManager(newManager);
                     break;
 

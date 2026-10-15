@@ -6,18 +6,25 @@ public class LINQ
 {
     public static void ShowSorting(Employee e1,Employee e2)
     {
-        //Regular Sort
-        //passing it as  a new list t
-        List<Employee> people=new List<Employee>{e1,e1};
-        //Sorting 
-        people.Sort((per1,per2)=>per1.Name.CompareTo(per2));
-        Console.WriteLine("\n Regular sorting:\n");
+        //passing it as  a new list
+        List<Employee> people=new List<Employee>{e1,e2};
+        Console.WriteLine("\n Original order:\n");
+        DisplayPeople(people);
 
-        //LINQ
+        //LINQ first: OrderBy does NOT change 'people', it gives back
+        //a new sorted sequence, so the original list stays as it was
         var sortLinq=people.OrderBy(person=>person.Name);
         Console.WriteLine("\n Linq Sort: \n");
-        //To display the output of Linq sorting 
         DisplayPeople(sortLinq);
+        Console.WriteLine("\n List after Linq (unchanged):\n");
+        DisplayPeople(people);
+
+        //Regular Sort: Sort() changes the list itself (in place)
+        //and returns nothing (void)
+        //compare the two names, not a name with an Employee
+        people.Sort((per1,per2)=>per1.Name.CompareTo(per2.Name));
+        Console.WriteLine("\n Regular sorting (list itself changed):\n");
+        DisplayPeople(people);
 
     }
 

@@ -60,14 +60,27 @@ class TxtStore : IUserStore
     static string[] ReadLines()
     {
         string[]? lines = null; // the thread will fill this in , allows null value
+        Exception? error = null; // set if the thread could not read the file
 
         Thread reader = new Thread(() =>
         {
-            lines = File.ReadAllLines(FilePath);
+            // An exception on a background thread would kill the whole app
+            // (Main's catch cannot see it), so keep it and rethrow it below.
+            try
+            {
+                lines = File.ReadAllLines(FilePath);
+            }
+            catch (Exception ex)
+            {
+                error = ex;
+            }
         });
 
         reader.Start();   // start the thread
         reader.Join();    // wait for it to finish (one thread does the reading)
+
+        if (error != null)
+            throw new IOException("Could not read " + FilePath + ": " + error.Message, error);
 
         // The ! says "trust me, the thread always filled this in" - true
         // because Join() above has finished by the time we get here.
@@ -307,11 +320,12 @@ class TxtStore : IUserStore
         for (int i = 0; i < rows.Count; i++)
         {
             string username = rows[i][1];
-            if (IsDirector(username))
+            if (IsDirector(username) && !director)
                 continue;
 
-            if (director || (manager && rows[i][RoleColumn] == UserRole)
-                || (!manager && username == LoggedInUser))
+            // Everyone may manage their own account.
+            if (director || username == LoggedInUser
+                || (manager && rows[i][RoleColumn] == UserRole))
             {
                 usernames.Add(username);
                 Console.WriteLine(username + "\t|\t"
@@ -361,7 +375,8 @@ class TxtStore : IUserStore
             return false;
         }
 
-        if (manager && IsManager(username))
+        // A manager can still change their own password.
+        if (manager && IsManager(username) && username != LoggedInUser)
         {
             Console.WriteLine("Managers cannot manage manager accounts.");
             return false;
@@ -373,7 +388,7 @@ class TxtStore : IUserStore
         if (manager && IsOrdinaryUser(username))
             return true;
 
-        if (!manager && LoggedInUser == username)
+        if (LoggedInUser == username)
             return true;   // your own account
 
         Console.WriteLine("You can only change your own account.");
